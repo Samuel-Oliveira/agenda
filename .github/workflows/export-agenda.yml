@@ -1,0 +1,40 @@
+name: Exportar agenda (GitHub Project)
+
+on:
+  schedule:
+    - cron: "30 8 * * *"   # 05:30 em Brasília, antes do e-mail das 6h41
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Exportar project e views
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+          PROJECT_OWNER: Samuel-Oliveira
+          PROJECT_NUMBER: "2"
+          VIEW_NUMBERS: "7,11"
+        run: python3 export_project.py
+
+      - name: Criptografar (o JSON em texto puro nunca é commitado)
+        env:
+          AGENDA_PASSPHRASE: ${{ secrets.AGENDA_PASSPHRASE }}
+        run: |
+          test -n "$AGENDA_PASSPHRASE" || { echo "Secret AGENDA_PASSPHRASE ausente"; exit 1; }
+          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -base64 -A \
+            -in agenda.json -out agenda.json.enc -pass env:AGENDA_PASSPHRASE
+          rm -f agenda.json
+
+      - name: Salvar no repositório
+        run: |
+          git config user.name "agenda-bot"
+          git config user.email "agenda-bot@users.noreply.github.com"
+          git add agenda.json.enc
+          git commit -m "agenda: $(TZ=America/Sao_Paulo date '+%Y-%m-%d %H:%M')" || echo "sem mudanças"
+          git push
